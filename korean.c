@@ -1,230 +1,168 @@
+#include "./hashmap/hashmap.h"
+#include "./log/log.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
-typedef char* String; // create String data type
-const char* STRUCT_WORDCOUNT_FORMAT = "{%i}\n";
-const char* STRUCT_WORD_FORMAT_IN = "(%i, %c, %[^,],)\n";
-const char* STRUCT_WORD_FORMAT_OUT = "[%i](%i, %c, %s,)\n";
-
-#define ORANGE "\033[38;5;208m" // orange color
-#define GREEN  "\033[32m"    //  Green color
-#define RESET "\033[0m"
-
-
-
-// SETTINGS -------------------------------------------------------------------!
-// in quotes, put path-to-file of words
-// "./words.dat" , . means it's in the current directory
+typedef char *String;
+const char *STRUCT_WORDCOUNT_FORMAT = "{%i}\n";
+const char *STRUCT_WORD_FORMAT_IN = "(%i, %c, %[^,],)\n";
+const char *STRUCT_WORD_FORMAT_OUT = "[%i](%i, %c, %s,)\n";
 const String FILE_PATH_WORDS = "./words.dat";
-const char SEENCAP = 2;
-const char KNOWNCAP = 7;
-// SETTINGS -------------------------------------------------------------------!
 
 // TODO count user input to make space for serialisation
 
-struct KoreanWordList {
-    int WordCount;
-    struct Word* WordList;
-};
 struct Word {
     int count;
-    char status; // U, S, K respectively unknown, seen, known, these are to indicate if the person has the following words on seen or on known
-    int size;
+    /// Indicates the status of the word.
+    /// U = Unknown
+    /// S = Seen
+    /// K = Known
+    char status;
+    int len;
     String word;
 };
 
-void serialize(String FILE_PATH_WORDS, struct KoreanWordList *KoreanWordList) { // save to file
-    // open file with error handling
-    FILE* file = fopen(FILE_PATH_WORDS, "w");      if (file == NULL) { perror("Error, opening file (serealize func)"); return; }
-
-    // set structs for easier access
-    int WordCount = KoreanWordList->WordCount; // set count
-    struct Word* WordList = KoreanWordList->WordList;
-
-    // print structs to file
-    fprintf(file, STRUCT_WORDCOUNT_FORMAT, WordCount); // print wordCount to file
-    for(int i = 0; i<WordCount; i++) { // print struct Word to file
-        fprintf(file, STRUCT_WORD_FORMAT_OUT, WordList[i].size, WordList[i].count, WordList[i].status, WordList[i].word);
-    }
-
-    fclose(file);
-}
-
-struct KoreanWordList* deserialise(String FILE_PATH_WORDS, int inputSize) { // load objects from file
-    // open file with error handling
-    FILE* file = fopen(FILE_PATH_WORDS, "r");        if (file == NULL) { perror("E,rror, opening file (deserialize function)"); return NULL; }
-
-    // malloc structs and get word count
-    struct KoreanWordList *KoreanWordList = malloc(sizeof(*KoreanWordList));        if (KoreanWordList == NULL) { free(KoreanWordList); perror("Error, allocating memory for KoreanWordList struct (deserialize function)"); return NULL; }
-    fscanf(file, STRUCT_WORDCOUNT_FORMAT, &(KoreanWordList->WordCount)); // load wordCount to file
-    KoreanWordList->WordList = malloc(sizeof(struct Word) * (KoreanWordList->WordCount * 2 + inputSize));      if (KoreanWordList->WordList == NULL) {free(KoreanWordList->WordList); perror("E,rror allocating memory for WordList struct (deserialize function)"); return NULL;}
-
-    if (KoreanWordList->WordCount != 0) {
-        // set structs for easier access
-        int WordCount = KoreanWordList->WordCount;
-        struct Word* WordList = KoreanWordList->WordList;
-
-        // scanf file for rest of words
-        for (int i = 0; i<WordCount; i++) {
-            fscanf(file, "[%i]", &WordList[i].size);
-            WordList[i].word = malloc(sizeof(char) * WordList[i].size + 1);         if (WordList[i].word == NULL) {free(WordList[i].word); perror("Error, allocating for string word (deserialize function)"); return NULL;}
-            fscanf(file, STRUCT_WORD_FORMAT_IN, &WordList[i].count, &WordList[i].status, WordList[i].word);
-        }
-    }
-
-    fclose(file);
-
-    return KoreanWordList;
-}
-
-void freeKoreanWordList(struct KoreanWordList* KoreanWordList) {
-
-    int WordCount = KoreanWordList->WordCount * 2;
-    struct Word* WordList = KoreanWordList->WordList;
-
-    for (int i = 0; i < WordCount; i++) {
-        free(WordList[i].word);
-    }
-    free(WordList);
-    free(KoreanWordList);
-    
-    return;
-}
-
-void checkCreateFile(String FILE_PATH_WORDS) {
-    FILE* file = fopen(FILE_PATH_WORDS, "r+");
+void serialize(String FILE_PATH_WORDS, hashmap_t *words) {
+    FILE *file = fopen(FILE_PATH_WORDS, "w");
     if (file == NULL) {
-        file = fopen(FILE_PATH_WORDS, "w");
-        if (file == NULL) {
-            perror("Error, creating file (ADD section)");
+        log_error("Failed to open .dat file.");
+        return;
+    }
+
+    fprintf(file, STRUCT_WORDCOUNT_FORMAT, words->size);
+    for (size_t i = 0; i < words->capacity; i++) {
+        pair_t *current = words->list[i];
+
+        while (current) {
+            struct Word *word = current->value;
+            fprintf(file, STRUCT_WORD_FORMAT_OUT, word->len, word->count, word->status, word->word);
+            current = current->next;
         }
-        fprintf(file, "{0}\n");
-        fclose(file);
-    } 
-    else { fclose(file); }
+    }
+
+    fclose(file);
 }
-        
 
-int main(int argc, char *argv[]) {
-    // korean ADD
-    if ( argc > 2 && strcmp(argv[1], "add" ) == 0 ) {
-        checkCreateFile(FILE_PATH_WORDS);
-
-        argv = (argv + 2); // set pointer to begin of words
-        int addWordCount = argc - 2;
-        struct KoreanWordList* KoreanWordList = deserialise(FILE_PATH_WORDS, addWordCount);         if (KoreanWordList == NULL) { perror("Error, deserializing in (ADD section)"); return 1; }
-        int tempWordCount = KoreanWordList->WordCount;
-        struct Word* WordList = KoreanWordList->WordList;
-        char wordFound = 0;
-
-        for (int i = 0; i<addWordCount; i++) {
-            for (int j = 0; j<tempWordCount; j++) {
-                if (strcmp(WordList[j].word, argv[i]) == 0) { // if word is found
-                    WordList[j].count++;
-                    wordFound = 1;
-                    break;
-                }
-            }
-            if (wordFound == 0) { // if not found, add it
-                WordList[tempWordCount].count = 1; // set count to 1
-                WordList[tempWordCount].status = 'U'; // set status to unknown
-                WordList[tempWordCount].size = strlen(argv[i]); // set size to length
-                WordList[tempWordCount].word = malloc(sizeof(char) * WordList[tempWordCount].size + 1);         if (WordList[tempWordCount].word == NULL) {free(WordList[tempWordCount].word); perror("Error allocating for string word in add section"); return 1;}
-                strcpy(WordList[tempWordCount].word, argv[i]); // set word to current add word
-
-                tempWordCount++; // increment word count to account for new word
-            }
-            wordFound = 0;
-        }
-        KoreanWordList->WordCount = tempWordCount;
-        serialize(FILE_PATH_WORDS, KoreanWordList);
-
-        printf("successfully added the words!\n");
-
-        freeKoreanWordList(KoreanWordList);
-        
+int deserialise(String FILE_PATH_WORDS, hashmap_t *words) {
+    FILE *file = fopen(FILE_PATH_WORDS, "r");
+    if (file == NULL) {
+        log_error("Failed to open .dat file.");
         return 0;
     }
 
-    // korean CHECK
-    else if ( argc == 2 && strcmp(argv[1], "check") == 0 ) { // if korean check 
-        checkCreateFile(FILE_PATH_WORDS);
+    int word_count = 0;
+    fscanf(file, STRUCT_WORDCOUNT_FORMAT, &word_count);
 
-        struct KoreanWordList* KoreanWordList = deserialise(FILE_PATH_WORDS, 0);         if (KoreanWordList == NULL) { perror("Error, deserializing in (CHECK section)"); return 1; }
-        int WordCount = KoreanWordList->WordCount;
-        struct Word* WordList = KoreanWordList->WordList;
-
-        printf("<------------------------<3---------------------------->\n\nthe words you should put on "ORANGE"SEEN"RESET":\n\n");
-        char seenWords = 0;
-        char knownWords = 0;
-
-        // show which you should put on seen
-        for (int i = 0; i < WordCount; i++) {
-            if (WordList[i].count >= SEENCAP && WordList[i].count <= KNOWNCAP && WordList[i].status != 'S' && WordList[i].status != 'K') {
-                printf(ORANGE"%s "RESET, WordList[i].word);
-                seenWords = 1;
-            }
-        } if (seenWords == 0) {
-            printf("--NO SEEN WORDS TO ADD THIS TIME--");
-        }
-
-        // show which you should put on known
-        printf("\n\n\nthe words you should put on "GREEN"KNOWN"RESET":\n\n");
-        for (int i = 0; i < WordCount; i++) {
-            if (WordList[i].count >= KNOWNCAP && WordList[i].status != 'K') { 
-                printf(GREEN"%s "RESET, WordList[i].word);
-                knownWords = 1;        
-            }
-        } if (knownWords == 0) {
-            printf("--NO KNOWN WORDS TO ADD THIS TIME--");
-        }
-
-        printf("\n\n\n<------------------------<3---------------------------->\n");
-        freeKoreanWordList(KoreanWordList);
-
-        return 0;
-    }
-
-    // korean UPDATE STATUS
-    else if ( argc == 2 && strcmp(argv[1], "updateStatus") == 0) {
-        checkCreateFile(FILE_PATH_WORDS);
-
-        struct KoreanWordList* KoreanWordList = deserialise(FILE_PATH_WORDS, 0);         if (KoreanWordList == NULL) { perror("Error, deserializing in (CHECK section)"); return 1; }
-        int WordCount = KoreanWordList->WordCount;
-        struct Word* WordList = KoreanWordList->WordList;
-
-        for (int i = 0; i < WordCount; i++) {
-            if (WordList[i].count >= SEENCAP && WordList[i].count <= KNOWNCAP && WordList[i].status != 'S' && WordList[i].status != 'K') {
-                WordList[i].status = 'S';
-            } else if (WordList[i].count >= KNOWNCAP && WordList[i].status != 'K') {
-                WordList[i].status = 'K';    
-            }
-        }
-
-        serialize(FILE_PATH_WORDS, KoreanWordList);
-        freeKoreanWordList(KoreanWordList);
-        printf("successfully updated status!");
-        return 0;
-    }
-    
-
-    // korean HELP
-    else if (argc == 2 && (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h")) == 0) {
-        FILE *file = fopen("./help.txt", "r");          if (file == NULL) { printf("Error, opening help file.txt (HELP section)"); return 2; }
-
-        int ch ;while ( ( ch = fgetc(file)) != EOF ) {
-            putchar(ch);
-        }
-
+    if (word_count == 0) {
         fclose(file);
         return 0;
     }
 
-    // korean ERROR
-    else { // if any random word
-        printf("Error? try, korean -h or korean --help");
+    for (int i = 0; i < word_count; i++) {
+        struct Word *new_word = malloc(sizeof(struct Word));
+        fscanf(file, "[%i]", &new_word->len);
+        new_word->word = malloc(sizeof(char) * new_word->len);
+        fscanf(file, STRUCT_WORD_FORMAT_IN, &new_word->count, &new_word->status, new_word->word);
+        hashmap_set(words, new_word->word, new_word);
+    }
+
+    fclose(file);
+    return 0;
+}
+
+int add(char *argv[], hashmap_t *words, int new_word_count) {
+    argv = (argv + 2);  // Set pointer to begin of words.
+
+    if (access(FILE_PATH_WORDS, R_OK | W_OK) != 0) {
+        FILE *file = fopen(FILE_PATH_WORDS, "w");
+        if (file == NULL) {
+            log_error("Failed to create .dat file.");
+            return 1;
+        }
+        fclose(file);
+    }
+
+    if (deserialise(FILE_PATH_WORDS, words) != 0) {
+        log_error("Failed to deserialize file.");
         return 1;
     }
-    
+
+    for (int i = 0; i < new_word_count; i++) {
+        char *word = argv[i];
+        struct Word *v = hashmap_get(words, word);
+        if (v != NULL) {
+            v->count++;
+        } else {
+            struct Word *new_word = malloc(sizeof(struct Word));
+            new_word->count = 1;
+            new_word->status = 'U';
+            new_word->len = strlen(argv[i]);
+            new_word->word = malloc(sizeof(char) * new_word->len);
+            strcpy(new_word->word, argv[i]);
+            hashmap_set(words, word, new_word);
+        }
+    }
+
+    serialize(FILE_PATH_WORDS, words);
+
+    return 0;
+}
+
+void usage() {
+    printf("Usage: ./korean [OPTIONS] <COMMAND>\n");
+    printf("Count the amount of times you've seen words.\n\n");
+    printf("\
+Commands:\n\
+add <words>...     add a word(s) to the .dat file. words must be space seperated.\n\
+check              ?\n\
+\n\
+Options:\n\
+-h, --help         display this help and exit.\
+            \n");
+}
+
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        log_error("You must provide at least 1 argument. See -h or --help for usage.");
+        return 1;
+    }
+
+    hashmap_t words;
+    if (hashmap_init(&words) != 0) {
+        log_error("Failed to initialize hashmap.");
+        return 1;
+    }
+
+    if (strcmp(argv[1], "add") == 0) {
+        if (argc < 3) {
+            log_error("No word(s) provided. Please provide at least 1 word to add.");
+            return 1;
+        }
+
+        int new_word_count = argc - 2;
+        if (add(argv, &words, new_word_count) != 0) {
+            log_error("Failed to add word.");
+            return 1;
+        }
+    } else if (strcmp(argv[1], "check") == 0) {
+
+    } else if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0) {
+        usage();
+        return 0;
+    }
+
+    // Free all words.
+    for (size_t i = 0; i < words.capacity; i++) {
+        pair_t *current = words.list[i];
+
+        while (current) {
+            struct Word *word = current->value;
+            free(word);
+            current = current->next;
+        }
+    }
+    hashmap_destroy(&words);
 }

@@ -1,0 +1,41 @@
+---
+Language:        Cpp
+BasedOnStyle:    WebKit
+
+AlignAfterOpenBracket:  BlockIndent
+AlignArrayOfStructures: Left
+AlignTrailingComments:
+  Kind:           Always
+  OverEmptyLines: 1
+
+AllowShortBlocksOnASingleLine:     Empty
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortEnumsOnASingleLine:      false
+AllowShortFunctionsOnASingleLine:  Empty
+
+BreakBeforeTernaryOperators: true
+BreakBeforeBraces:           Attach
+
+SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+
+IndentWidth: 4
+
+QualifierAlignment: Left
+
+SpaceAfterCStyleCast:              true
+SpaceAfterLogicalNot:              false
+SpaceBeforeAssignmentOperators:    true
+SpaceBeforeCaseColon:              false
+SpaceBeforeParens:                 ControlStatements
+SpaceBeforeRangeBasedForLoopColon: true
+SpaceBeforeSquareBrackets:         false
+SpaceInEmptyBlock:                 false
+SpacesBeforeTrailingComments:      2
+
+PointerAlignment: Right
+ReferenceAlignment: Right
+
+ColumnLimit: 100
+...
+
