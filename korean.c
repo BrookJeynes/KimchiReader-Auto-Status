@@ -6,11 +6,20 @@
 #include <string.h>
 #include <unistd.h>
 
+#define ORANGE "\033[38;5;208m"
+#define GREEN "\033[32m"
+#define RESET "\033[0m"
+
 typedef char *String;
+
 const char *STRUCT_WORDCOUNT_FORMAT = "{%i}\n";
 const char *STRUCT_WORD_FORMAT_IN = "(%i, %c, %[^,],)\n";
 const char *STRUCT_WORD_FORMAT_OUT = "[%i](%i, %c, %s,)\n";
-const String FILE_PATH_WORDS = "./words.dat";
+
+const String DEFAULT_DAT_PATH = "./words.dat";
+
+const char SEENCAP = 2;
+const char KNOWNCAP = 7;
 
 // TODO count user input to make space for serialisation
 
@@ -73,11 +82,9 @@ int deserialise(String FILE_PATH_WORDS, hashmap_t *words) {
     return 0;
 }
 
-int add(char *argv[], hashmap_t *words, int new_word_count) {
-    argv = (argv + 2);  // Set pointer to begin of words.
-
-    if (access(FILE_PATH_WORDS, R_OK | W_OK) != 0) {
-        FILE *file = fopen(FILE_PATH_WORDS, "w");
+int checkAndCreateDatFile(String path) {
+    if (access(path, R_OK | W_OK) != 0) {
+        FILE *file = fopen(path, "w");
         if (file == NULL) {
             log_error("Failed to create .dat file.");
             return 1;
@@ -85,7 +92,15 @@ int add(char *argv[], hashmap_t *words, int new_word_count) {
         fclose(file);
     }
 
-    if (deserialise(FILE_PATH_WORDS, words) != 0) {
+    return 0;
+}
+
+int add(char *argv[], hashmap_t *words, int new_word_count) {
+    argv = (argv + 2);  // Set pointer to begin of words.
+
+    checkAndCreateDatFile(DEFAULT_DAT_PATH);
+
+    if (deserialise(DEFAULT_DAT_PATH, words) != 0) {
         log_error("Failed to deserialize file.");
         return 1;
     }
@@ -106,7 +121,95 @@ int add(char *argv[], hashmap_t *words, int new_word_count) {
         }
     }
 
-    serialize(FILE_PATH_WORDS, words);
+    serialize(DEFAULT_DAT_PATH, words);
+
+    return 0;
+}
+
+int check(hashmap_t *words) {
+    checkAndCreateDatFile(DEFAULT_DAT_PATH);
+
+    if (deserialise(DEFAULT_DAT_PATH, words) != 0) {
+        log_error("Failed to deserialize file.");
+        return 1;
+    }
+
+    printf("<------------------------<3---------------------------->\n\nthe words you should put "
+           "on " ORANGE "SEEN" RESET ":\n\n");
+    char seen_words = 0;
+    char known_words = 0;
+
+    for (size_t i = 0; i < words->capacity; i++) {
+        pair_t *current = words->list[i];
+
+        while (current) {
+            struct Word *word = current->value;
+
+            if (word->count >= SEENCAP && word->count <= KNOWNCAP && word->status == 'U') {
+                printf(ORANGE "%s " RESET, word->word);
+                seen_words++;
+            }
+
+            current = current->next;
+        }
+    }
+
+    if (seen_words == 0) {
+        printf("--NO SEEN WORDS TO ADD THIS TIME--");
+    }
+
+    printf("\n\n\nthe words you should put on " GREEN "KNOWN" RESET ":\n\n");
+
+    for (size_t i = 0; i < words->capacity; i++) {
+        pair_t *current = words->list[i];
+
+        while (current) {
+            struct Word *word = current->value;
+
+            if (word->count >= KNOWNCAP && word->status != 'K') {
+                printf(GREEN "%s " RESET, word->word);
+                known_words++;
+            }
+
+            current = current->next;
+        }
+    }
+
+    if (known_words == 0) {
+        printf("--NO KNOWN WORDS TO ADD THIS TIME--");
+    }
+
+    printf("\n\n\n<------------------------<3---------------------------->\n");
+
+    return 0;
+}
+
+int update(hashmap_t *words) {
+    checkAndCreateDatFile(DEFAULT_DAT_PATH);
+
+    if (deserialise(DEFAULT_DAT_PATH, words) != 0) {
+        log_error("Failed to deserialize file.");
+        return 1;
+    }
+
+    for (size_t i = 0; i < words->capacity; i++) {
+        pair_t *current = words->list[i];
+
+        while (current) {
+            struct Word *word = current->value;
+
+            if (word->count >= SEENCAP && word->count <= KNOWNCAP && word->status == 'U') {
+                word->status = 'S';
+            } else if (word->count >= KNOWNCAP && word->status != 'K') {
+                word->status = 'K';
+            }
+
+            current = current->next;
+        }
+    }
+
+    serialize(DEFAULT_DAT_PATH, words);
+    log_info("Successfully updated status.");
 
     return 0;
 }
@@ -118,6 +221,7 @@ void usage() {
 Commands:\n\
 add <words>...     add a word(s) to the .dat file. words must be space seperated.\n\
 check              ?\n\
+update             ?\n\
 \n\
 Options:\n\
 -h, --help         display this help and exit.\
@@ -144,11 +248,19 @@ int main(int argc, char *argv[]) {
 
         int new_word_count = argc - 2;
         if (add(argv, &words, new_word_count) != 0) {
-            log_error("Failed to add word.");
+            log_error("Failed to add word(s).");
             return 1;
         }
     } else if (strcmp(argv[1], "check") == 0) {
-
+        if (check(&words) != 0) {
+            log_error("Failed to check words.");
+            return 1;
+        }
+    } else if (strcmp(argv[1], "update") == 0) {
+        if (update(&words) != 0) {
+            log_error("Failed to update words.");
+            return 1;
+        }
     } else if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0) {
         usage();
         return 0;
